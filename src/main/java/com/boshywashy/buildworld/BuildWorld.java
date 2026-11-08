@@ -4,6 +4,11 @@ import com.boshywashy.buildworld.commands.AdminCommand;
 import com.boshywashy.buildworld.commands.BuildWorldCommand;
 import com.boshywashy.buildworld.commands.TabCompleter;
 import com.boshywashy.buildworld.database.DatabaseManager;
+import com.boshywashy.buildworld.gui.DeleteConfirmGUI;
+import com.boshywashy.buildworld.gui.InvitePlayerGUI;
+import com.boshywashy.buildworld.gui.MainMenuGUI;
+import com.boshywashy.buildworld.gui.ManagePlayersGUI;
+import com.boshywashy.buildworld.gui.WorldControlGUI;
 import com.boshywashy.buildworld.gui.WorldMenuGUI;
 import com.boshywashy.buildworld.listeners.PlayerListener;
 import com.boshywashy.buildworld.listeners.WorldListener;
@@ -24,35 +29,45 @@ public class BuildWorld extends JavaPlugin {
     private PermissionManager permissionManager;
     private ExpansionManager expansionManager;
     private WorldMenuGUI worldMenuGUI;
+    private MainMenuGUI mainMenuGUI;
+    private WorldControlGUI worldControlGUI;
+    private InvitePlayerGUI invitePlayerGUI;
+    private ManagePlayersGUI managePlayersGUI;
+    private DeleteConfirmGUI deleteConfirmGUI;
 
     @Override
     public void onEnable() {
         instance = this;
         saveDefaultConfig();
 
-        // Initialize managers
         this.configManager = new ConfigManager(this);
         this.databaseManager = new DatabaseManager(this);
-        this.worldManager = new WorldManager(this);   // starts the auto-unload task internally
+        this.worldManager = new WorldManager(this);
         this.permissionManager = new PermissionManager(this);
         this.expansionManager = new ExpansionManager(this);
         this.worldMenuGUI = new WorldMenuGUI(this);
+        this.mainMenuGUI = new MainMenuGUI(this);
+        this.worldControlGUI = new WorldControlGUI(this);
+        this.invitePlayerGUI = new InvitePlayerGUI(this);
+        this.managePlayersGUI = new ManagePlayersGUI(this);
+        this.deleteConfirmGUI = new DeleteConfirmGUI(this);
 
-        // Load all worlds from database
-        loadWorlds();
+        loadActiveWorlds();
 
-        // Register commands
         getCommand("buildworld").setExecutor(new BuildWorldCommand(this));
         getCommand("buildworld").setTabCompleter(new TabCompleter(this));
         getCommand("buildworldadmin").setExecutor(new AdminCommand(this));
         getCommand("buildworldadmin").setTabCompleter(new TabCompleter(this));
 
-        // Register listeners
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
         getServer().getPluginManager().registerEvents(new WorldListener(this), this);
         getServer().getPluginManager().registerEvents(worldMenuGUI, this);
+        getServer().getPluginManager().registerEvents(mainMenuGUI, this);
+        getServer().getPluginManager().registerEvents(worldControlGUI, this);
+        getServer().getPluginManager().registerEvents(invitePlayerGUI, this);
+        getServer().getPluginManager().registerEvents(managePlayersGUI, this);
+        getServer().getPluginManager().registerEvents(deleteConfirmGUI, this);
 
-        // Start expansion task if enabled
         if (configManager.isOnlineExpansionEnabled()) {
             expansionManager.startExpansionTask();
         }
@@ -60,8 +75,8 @@ public class BuildWorld extends JavaPlugin {
         getLogger().info("BuildWorld has been enabled!");
     }
 
-    private void loadWorlds() {
-        List<String> worlds = databaseManager.getAllWorlds();
+    private void loadActiveWorlds() {
+        List<String> worlds = databaseManager.getActiveWorlds();
         for (String worldName : worlds) {
             World world = Bukkit.getWorld(worldName);
             if (world == null) {
@@ -78,7 +93,7 @@ public class BuildWorld extends JavaPlugin {
                     world.setGameRule(org.bukkit.GameRule.DO_MOB_SPAWNING, false);
                     world.setGameRule(org.bukkit.GameRule.DO_WEATHER_CYCLE, false);
                     world.setTime(6000);
-                    getLogger().info("Loaded world: " + worldName);
+                    getLogger().info("Loaded active world: " + worldName);
                 }
             }
         }
@@ -88,6 +103,7 @@ public class BuildWorld extends JavaPlugin {
     public void onDisable() {
         if (worldManager != null) {
             worldManager.stopAutoUnloadTask();
+            worldManager.stopInactiveCheckTask();
         }
         if (expansionManager != null) {
             expansionManager.stopExpansionTask();
@@ -102,11 +118,15 @@ public class BuildWorld extends JavaPlugin {
         return instance;
     }
 
-    // Getters
     public DatabaseManager getDatabaseManager() { return databaseManager; }
     public ConfigManager getConfigManager() { return configManager; }
     public WorldManager getWorldManager() { return worldManager; }
     public PermissionManager getPermissionManager() { return permissionManager; }
     public ExpansionManager getExpansionManager() { return expansionManager; }
     public WorldMenuGUI getWorldMenuGUI() { return worldMenuGUI; }
+    public MainMenuGUI getMainMenuGUI() { return mainMenuGUI; }
+    public WorldControlGUI getWorldControlGUI() { return worldControlGUI; }
+    public InvitePlayerGUI getInvitePlayerGUI() { return invitePlayerGUI; }
+    public ManagePlayersGUI getManagePlayersGUI() { return managePlayersGUI; }
+    public DeleteConfirmGUI getDeleteConfirmGUI() { return deleteConfirmGUI; }
 }

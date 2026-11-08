@@ -1,7 +1,6 @@
 package com.boshywashy.buildworld.managers;
 
 import com.boshywashy.buildworld.BuildWorld;
-import org.bukkit.ChatColor;
 import org.bukkit.configuration.ConfigurationSection;
 
 import java.util.HashMap;
@@ -47,6 +46,10 @@ public class ConfigManager {
         return plugin.getConfig().getInt("OnlineWorldExpansion.CheckInterval", 60);
     }
 
+    public int getInactiveMinutes() {
+        return plugin.getConfig().getInt("World.InactiveMinutes", 10);
+    }
+
     public Map<String, String> getTutorialMessages() {
         Map<String, String> tutorials = new HashMap<>();
         ConfigurationSection section = plugin.getConfig().getConfigurationSection("Tutorials");
@@ -65,4 +68,6 @@ public class ConfigManager {
     public int getCreateCooldown() {
         return plugin.getConfig().getInt("World.CreateCooldown", 60);
     }
+
+
 }

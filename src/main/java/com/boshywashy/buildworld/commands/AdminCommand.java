@@ -3,7 +3,6 @@ package com.boshywashy.buildworld.commands;
 import com.boshywashy.buildworld.BuildWorld;
 import com.boshywashy.buildworld.utils.MessageUtils;
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.Command;
@@ -108,6 +107,9 @@ public class AdminCommand implements CommandExecutor {
             case "visit":
                 handleAdminVisit(sender, args);
                 break;
+            case "inactiveworld":
+                handleInactiveWorld(sender, args);
+                break;
             default:
                 sendAdminHelp(sender);
                 break;
@@ -116,8 +118,94 @@ public class AdminCommand implements CommandExecutor {
         return true;
     }
 
-    // ── Admin Visit ───────────────────────────────────────────────────────────
-    // /bwa visit <world>  — teleports to the world's spawn even if closed/hidden.
+    private void handleInactiveWorld(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(MessageUtils.colorize("&cUsage: /bwa inactiveWorld <set|timer|activate> <world>"));
+            return;
+        }
+
+        String action = args[1].toLowerCase();
+        if (action.equals("set")) {
+            if (args.length < 3) {
+                sender.sendMessage(MessageUtils.colorize("&cUsage: /bwa inactiveWorld set <activeWorldName>"));
+                return;
+            }
+            String worldName = resolveWorldName(args[2]);
+            if (worldName == null || !plugin.getDatabaseManager().isBuildWorld(worldName)) {
+                sender.sendMessage(MessageUtils.colorize("&cWorld not found in BuildWorld database!"));
+                return;
+            }
+            String spawnWorld = plugin.getDatabaseManager().getSpawnWorld();
+            if (spawnWorld != null && worldName.equalsIgnoreCase(spawnWorld)) {
+                sender.sendMessage(MessageUtils.colorize("&cThe server spawn world cannot be set to inactive!"));
+                return;
+            }
+            if (plugin.getDatabaseManager().isInactive(worldName)) {
+                sender.sendMessage(MessageUtils.colorize("&cThat world is already inactive!"));
+                return;
+            }
+
+            World world = Bukkit.getWorld(worldName);
+            if (world != null && !world.getPlayers().isEmpty()) {
+                Location serverSpawn = plugin.getDatabaseManager().getSpawnLocation();
+                if (serverSpawn == null) serverSpawn = Bukkit.getWorlds().get(0).getSpawnLocation();
+                for (Player p : world.getPlayers()) {
+                    p.teleport(serverSpawn);
+                    p.sendMessage(MessageUtils.colorize("&cThe world you were in was set to inactive by an admin."));
+                }
+            }
+
+            sender.sendMessage(MessageUtils.colorize("&eMoving world to inactive folder..."));
+            plugin.getWorldManager().moveToInactive(worldName, () ->
+                    sender.sendMessage(MessageUtils.colorize("&aWorld " + worldName + " has been set to inactive.")));
+        } else if (action.equals("timer")) {
+            if (args.length < 3) {
+                sender.sendMessage(MessageUtils.colorize("&cUsage: /bwa inactiveWorld timer <worldName>"));
+                return;
+            }
+            String worldName = resolveWorldName(args[2]);
+            if (worldName == null || !plugin.getDatabaseManager().isBuildWorld(worldName)) {
+                sender.sendMessage(MessageUtils.colorize("&cWorld not found in BuildWorld database!"));
+                return;
+            }
+            String spawnWorld = plugin.getDatabaseManager().getSpawnWorld();
+            if (spawnWorld != null && worldName.equalsIgnoreCase(spawnWorld)) {
+                sender.sendMessage(MessageUtils.colorize("&eWorld %secondary%" + worldName + " &eis set as the server spawn world and &bwill never go inactive&e."));
+                return;
+            }
+            if (plugin.getDatabaseManager().isInactive(worldName)) {
+                sender.sendMessage(MessageUtils.colorize("&eWorld %secondary%" + worldName + " &eis currently &cINACTIVE&e."));
+                return;
+            }
+            long secondsLeft = plugin.getWorldManager().getTimeUntilInactiveSeconds(worldName);
+            if (secondsLeft < 0) {
+                sender.sendMessage(MessageUtils.colorize("&eWorld currently has players in it. Timer is paused while occupied."));
+            } else {
+                long minutes = secondsLeft / 60;
+                long seconds = secondsLeft % 60;
+                sender.sendMessage(MessageUtils.colorize("&eTime until %secondary%" + worldName + " &egoes inactive: &b" + minutes + "m " + seconds + "s"));
+            }
+        } else if (action.equals("activate")) {
+            if (args.length < 3) {
+                sender.sendMessage(MessageUtils.colorize("&cUsage: /bwa inactiveWorld activate <inactiveWorld>"));
+                return;
+            }
+            String worldName = resolveWorldName(args[2]);
+            if (worldName == null || !plugin.getDatabaseManager().isBuildWorld(worldName)) {
+                sender.sendMessage(MessageUtils.colorize("&cWorld not found in BuildWorld database!"));
+                return;
+            }
+            if (!plugin.getDatabaseManager().isInactive(worldName)) {
+                sender.sendMessage(MessageUtils.colorize("&cThat world is already active!"));
+                return;
+            }
+            sender.sendMessage(MessageUtils.colorize("&eActivating world and moving to root... Please wait."));
+            plugin.getWorldManager().activateWorld(worldName, () ->
+                    sender.sendMessage(MessageUtils.colorize("&aWorld " + worldName + " has been activated successfully!")));
+        } else {
+            sender.sendMessage(MessageUtils.colorize("&cUsage: /bwa inactiveWorld <set|timer|activate> <world>"));
+        }
+    }
 
     private void handleAdminVisit(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) {
@@ -138,10 +226,24 @@ public class AdminCommand implements CommandExecutor {
             return;
         }
 
-        // Maintenance mode: admins are always allowed to visit
-        // (maintenance only blocks non-admin players, so no check needed here)
+        if (plugin.getDatabaseManager().isInactive(worldName)) {
+            sender.sendMessage(MessageUtils.colorize("&eWorld is inactive and loading up... Please wait."));
+            plugin.getWorldManager().activateWorld(worldName, () -> {
+                if (!player.isOnline()) return;
+                World world = plugin.getWorldManager().ensureWorldLoaded(worldName);
+                if (world != null) {
+                    Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(worldName);
+                    player.teleport(spawnLoc);
+                    String nickname = plugin.getDatabaseManager().getNickname(worldName);
+                    sender.sendMessage(MessageUtils.colorize("%primary%Teleported to %secondary%" + nickname +
+                            " %primary%(" + worldName + ")"));
+                } else {
+                    sender.sendMessage(MessageUtils.colorize("&cFailed to load world!"));
+                }
+            });
+            return;
+        }
 
-        // Ensure world is loaded (it may have been auto-unloaded)
         World world = plugin.getWorldManager().ensureWorldLoaded(worldName);
         if (world == null) {
             sender.sendMessage(MessageUtils.colorize("&cFailed to load world!"));
@@ -155,8 +257,6 @@ public class AdminCommand implements CommandExecutor {
         sender.sendMessage(MessageUtils.colorize("%primary%Teleported to %secondary%" + nickname +
                 " %primary%(" + worldName + ")"));
     }
-
-    // ── Existing handlers ─────────────────────────────────────────────────────
 
     private void handleSetMaxWorld(CommandSender sender, String[] args) {
         if (args.length < 2) {
@@ -233,10 +333,22 @@ public class AdminCommand implements CommandExecutor {
         if (action.equals("add")) {
             String role = type.equals("owner") ? "OWNER" : "MEMBER";
             plugin.getDatabaseManager().addMember(worldName, targetUUID, role);
+
+            Player targetPlayer = Bukkit.getPlayer(targetUUID);
+            if (targetPlayer != null && targetPlayer.isOnline() && targetPlayer.getWorld().getName().equals(worldName)) {
+                plugin.getPermissionManager().applyWorldPermissions(targetPlayer, worldName);
+            }
+
             sender.sendMessage(MessageUtils.colorize("%primary%Added %secondary%" + targetName +
                     " %primary%as %secondary%" + role));
         } else if (action.equals("remove")) {
             plugin.getDatabaseManager().removeMember(worldName, targetUUID);
+
+            Player targetPlayer = Bukkit.getPlayer(targetUUID);
+            if (targetPlayer != null && targetPlayer.isOnline() && targetPlayer.getWorld().getName().equals(worldName)) {
+                plugin.getPermissionManager().removePermissions(targetPlayer);
+            }
+
             sender.sendMessage(MessageUtils.colorize("%primary%Removed %secondary%" + targetName));
         }
     }
@@ -470,6 +582,10 @@ public class AdminCommand implements CommandExecutor {
         if (enabled) {
             String kickMessage = plugin.getConfig().getString("Maintenance.KickMessage",
                     "&cThe BuildWorld system is currently under maintenance. Please try again later.");
+            String spawnWorldName = plugin.getDatabaseManager().getSpawnWorld();
+            if (spawnWorldName != null && Bukkit.getWorld(spawnWorldName) == null) {
+                Bukkit.createWorld(new org.bukkit.WorldCreator(spawnWorldName));
+            }
             for (World world : Bukkit.getWorlds()) {
                 if (plugin.getDatabaseManager().isBuildWorld(world.getName())) {
                     Location serverSpawn = plugin.getDatabaseManager().getSpawnLocation();
@@ -509,6 +625,9 @@ public class AdminCommand implements CommandExecutor {
         sender.sendMessage(MessageUtils.colorize("%secondary%/bwa DeleteWorld <world>"));
         sender.sendMessage(MessageUtils.colorize("%secondary%/bwa Maintenance <true|false>"));
         sender.sendMessage(MessageUtils.colorize("%secondary%/bwa visit <world> &7- Teleport to any world's spawn"));
+        sender.sendMessage(MessageUtils.colorize("%secondary%/bwa inactiveWorld set <world> &7- Set world inactive"));
+        sender.sendMessage(MessageUtils.colorize("%secondary%/bwa inactiveWorld timer <world> &7- Check inactive timer"));
+        sender.sendMessage(MessageUtils.colorize("%secondary%/bwa inactiveWorld activate <world> &7- Activate world"));
     }
 
     private String resolveWorldName(String input) {

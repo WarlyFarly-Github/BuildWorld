@@ -31,24 +31,38 @@ public class PlayerListener implements Listener {
         World fromWorld = event.getFrom();
         World toWorld = player.getWorld();
 
-        // Always remove permissions when leaving a build world
         if (plugin.getDatabaseManager().isBuildWorld(fromWorld.getName())) {
             plugin.getPermissionManager().removePermissions(player);
 
-            // Immediately check if the world the player just left is now empty
-            // and unload it if so. Schedule 1 tick later so the player is fully
-            // transferred before we check the player list.
             final String leftWorldName = fromWorld.getName();
             Bukkit.getScheduler().runTaskLater(plugin, () ->
                     plugin.getWorldManager().tryUnloadWorld(leftWorldName), 1L);
         }
 
-        // If not entering a build world, nothing else to do
+        String spawnWorldName = plugin.getDatabaseManager().getSpawnWorld();
+        boolean isSpawnWorld = toWorld.getName().equals(spawnWorldName);
+
+        if (isSpawnWorld) {
+            String primary = plugin.getConfigManager().getPrimaryColor();
+            int fadeIn = plugin.getConfig().getInt("Messages.Title.FadeIn", 20);
+            int stay = plugin.getConfig().getInt("Messages.Title.Stay", 60);
+            int fadeOut = plugin.getConfig().getInt("Messages.Title.FadeOut", 20);
+
+            player.sendTitle(
+                    MessageUtils.colorize("&" + primary + "&lWelcome to Spawn!"),
+                    "",
+                    fadeIn, stay, fadeOut
+            );
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) sendSpawnWorldWelcomeMessage(player);
+            }, 2L);
+            return;
+        }
+
         if (!plugin.getDatabaseManager().isBuildWorld(toWorld.getName())) {
             return;
         }
 
-        // Check maintenance mode
         if (plugin.getConfig().getBoolean("Maintenance.Enabled", false)) {
             if (!player.hasPermission("buildworld.admin")) {
                 Bukkit.getScheduler().runTask(plugin, () -> {
@@ -72,46 +86,31 @@ public class PlayerListener implements Listener {
         int stay = plugin.getConfig().getInt("Messages.Title.Stay", 60);
         int fadeOut = plugin.getConfig().getInt("Messages.Title.FadeOut", 20);
 
-        // Apply permissions first
         plugin.getPermissionManager().applyWorldPermissions(player, worldName);
 
-        String spawnWorldName = plugin.getDatabaseManager().getSpawnWorld();
-        boolean isSpawnWorld = toWorld.getName().equals(spawnWorldName);
+        boolean isOwner = plugin.getDatabaseManager().isOwner(worldName, player.getUniqueId());
+        boolean isMember = plugin.getDatabaseManager().isMember(worldName, player.getUniqueId());
 
-        if (isSpawnWorld) {
+        if (isOwner || isMember) {
             player.sendTitle(
-                    MessageUtils.colorize("&" + primary + "&lWelcome to Spawn!"),
-                    "",
+                    MessageUtils.colorize("&" + primary + "&lWelcome to &" + secondary + "&l" + nickname),
+                    MessageUtils.colorize("&fUse /bw help to learn how to build!"),
                     fadeIn, stay, fadeOut
             );
+            final String nick = nickname;
             Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (player.isOnline()) sendSpawnWorldWelcomeMessage(player);
+                if (player.isOnline()) sendWelcomeMessage(player, nick);
             }, 2L);
         } else {
-            boolean isOwner = plugin.getDatabaseManager().isOwner(worldName, player.getUniqueId());
-            boolean isMember = plugin.getDatabaseManager().isMember(worldName, player.getUniqueId());
-
-            if (isOwner || isMember) {
-                player.sendTitle(
-                        MessageUtils.colorize("&" + primary + "&lWelcome to &" + secondary + "&l" + nickname),
-                        MessageUtils.colorize("&fUse /bw help to learn how to build!"),
-                        fadeIn, stay, fadeOut
-                );
-                final String nick = nickname;
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    if (player.isOnline()) sendWelcomeMessage(player, nick);
-                }, 2L);
-            } else {
-                player.sendTitle(
-                        MessageUtils.colorize("&" + primary + "&lWelcome to &" + secondary + "&l" + nickname),
-                        MessageUtils.colorize("&fEnjoy your visit!"),
-                        fadeIn, stay, fadeOut
-                );
-                final String nick = nickname;
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    if (player.isOnline()) sendVisitorWelcomeMessage(player, nick);
-                }, 2L);
-            }
+            player.sendTitle(
+                    MessageUtils.colorize("&" + primary + "&lWelcome to &" + secondary + "&l" + nickname),
+                    MessageUtils.colorize("&fEnjoy your visit!"),
+                    fadeIn, stay, fadeOut
+            );
+            final String nick = nickname;
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (player.isOnline()) sendVisitorWelcomeMessage(player, nick);
+            }, 2L);
         }
     }
 
@@ -127,6 +126,11 @@ public class PlayerListener implements Listener {
                 player.sendMessage(MessageUtils.colorize("%secondary%/bw join " + nick));
             }
         }
+
+        World joinWorld = player.getWorld();
+        if (plugin.getDatabaseManager().isBuildWorld(joinWorld.getName())) {
+            plugin.getPermissionManager().applyWorldPermissions(player, joinWorld.getName());
+        }
     }
 
     @EventHandler
@@ -136,8 +140,6 @@ public class PlayerListener implements Listener {
 
         plugin.getPermissionManager().removePermissions(player);
 
-        // If they were in a build world, schedule an immediate unload check.
-        // We schedule 1 tick later so Bukkit fully processes the disconnect first.
         if (plugin.getDatabaseManager().isBuildWorld(worldName)) {
             Bukkit.getScheduler().runTaskLater(plugin, () ->
                     plugin.getWorldManager().tryUnloadWorld(worldName), 1L);
@@ -151,7 +153,6 @@ public class PlayerListener implements Listener {
 
         if (!plugin.getDatabaseManager().isBuildWorld(world.getName())) return;
 
-        // Check maintenance mode
         if (plugin.getConfig().getBoolean("Maintenance.Enabled", false)) {
             if (!player.hasPermission("buildworld.admin")) {
                 Location serverSpawn = plugin.getDatabaseManager().getSpawnLocation();
@@ -163,7 +164,6 @@ public class PlayerListener implements Listener {
             }
         }
 
-        // Check if player is outside world border
         Location loc = player.getLocation();
         if (!world.getWorldBorder().isInside(loc)) {
             Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(world.getName());
@@ -171,7 +171,6 @@ public class PlayerListener implements Listener {
             player.sendMessage(MessageUtils.colorize("&cYou reached the world border!"));
         }
 
-        // Void protection
         if (loc.getY() < -75) {
             Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(world.getName());
             player.teleport(spawnLoc);
@@ -190,8 +189,6 @@ public class PlayerListener implements Listener {
 
         event.setCancelled(true);
     }
-
-    // ── Message helpers ─────────────────────────────────────────────────────
 
     private void sendWelcomeMessage(Player player, String worldName) {
         List<String> defaultMsg = Arrays.asList(
@@ -253,4 +250,6 @@ public class PlayerListener implements Listener {
             player.sendMessage(MessageUtils.colorize(line));
         }
     }
+
+
 }

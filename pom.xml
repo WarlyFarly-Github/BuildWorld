@@ -6,7 +6,7 @@
 
     <groupId>org.example</groupId>
     <artifactId>BuildWorld</artifactId>
-    <version>1.0.5-Beta_Release</version>
+    <version>1.0.15-Beta_Release</version>
 
     <properties>
         <maven.compiler.source>21</maven.compiler.source>
@@ -62,9 +62,8 @@
         <dependency>
             <groupId>net.luckperms</groupId>
             <artifactId>api</artifactId>
-            <version>5.5.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/libs/LuckPerms-Bukkit-5.5.0.jar</systemPath>
+            <version>5.5</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 

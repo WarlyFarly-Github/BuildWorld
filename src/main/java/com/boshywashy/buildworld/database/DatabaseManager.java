@@ -52,6 +52,7 @@ public class DatabaseManager {
                     "diameter INT DEFAULT 100," +
                     "is_open BOOLEAN DEFAULT FALSE," +
                     "is_hidden BOOLEAN DEFAULT FALSE," +
+                    "is_inactive BOOLEAN DEFAULT FALSE," +
                     "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
 
             stmt.execute("CREATE TABLE IF NOT EXISTS members (" +
@@ -100,11 +101,13 @@ public class DatabaseManager {
      * Adds any missing columns to existing tables (safe migration).
      */
     private void migrateSchema() {
-        // Add is_hidden column if it doesn't exist yet
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("ALTER TABLE worlds ADD COLUMN is_hidden BOOLEAN DEFAULT FALSE");
         } catch (SQLException ignored) {
-            // Column already exists – that's fine
+        }
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("ALTER TABLE worlds ADD COLUMN is_inactive BOOLEAN DEFAULT FALSE");
+        } catch (SQLException ignored) {
         }
     }
 
@@ -198,6 +201,59 @@ public class DatabaseManager {
             e.printStackTrace();
         }
         return worlds;
+    }
+
+    public List<String> getActiveWorlds() {
+        List<String> worlds = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT world_name FROM worlds WHERE is_inactive = FALSE")) {
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                worlds.add(rs.getString("world_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return worlds;
+    }
+
+    public List<String> getInactiveWorlds() {
+        List<String> worlds = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT world_name FROM worlds WHERE is_inactive = TRUE")) {
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                worlds.add(rs.getString("world_name"));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return worlds;
+    }
+
+    public void setInactive(String worldName, boolean inactive) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE worlds SET is_inactive = ? WHERE world_name = ?")) {
+            ps.setBoolean(1, inactive);
+            ps.setString(2, worldName);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public boolean isInactive(String worldName) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT is_inactive FROM worlds WHERE world_name = ?")) {
+            ps.setString(1, worldName);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return rs.getBoolean("is_inactive");
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
     }
 
     public void setNickname(String worldName, String nickname) {
@@ -300,8 +356,6 @@ public class DatabaseManager {
         return false;
     }
 
-    // ── Hidden world support ────────────────────────────────────────────────
-
     public void setHidden(String worldName, boolean hidden) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "UPDATE worlds SET is_hidden = ? WHERE world_name = ?")) {
@@ -326,8 +380,6 @@ public class DatabaseManager {
         }
         return false;
     }
-
-    // ── Diameter ────────────────────────────────────────────────────────────
 
     public void setDiameter(String worldName, int diameter) {
         try (PreparedStatement ps = connection.prepareStatement(
@@ -568,6 +620,9 @@ public class DatabaseManager {
             if (rs.next()) {
                 String worldName = rs.getString("world_name");
                 World world = Bukkit.getWorld(worldName);
+                if (world == null) {
+                    world = Bukkit.createWorld(new org.bukkit.WorldCreator(worldName));
+                }
                 if (world != null) {
                     double x = rs.getDouble("x");
                     double y = rs.getDouble("y");
@@ -595,7 +650,6 @@ public class DatabaseManager {
         return null;
     }
 
-    // World spawn location methods
     public void setWorldSpawn(String worldName, Location loc) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT OR REPLACE INTO world_spawns (world_name, x, y, z, yaw, pitch) VALUES (?, ?, ?, ?, ?, ?)")) {
@@ -630,7 +684,6 @@ public class DatabaseManager {
         } catch (SQLException e) {
             e.printStackTrace();
         }
-        // Return default spawn if no custom spawn set
         World world = Bukkit.getWorld(worldName);
         if (world != null) {
             return world.getSpawnLocation();
@@ -650,7 +703,6 @@ public class DatabaseManager {
         return false;
     }
 
-    // Extra world credits methods
     public void setExtraWorldCredits(UUID playerUUID, int credits) {
         try (PreparedStatement ps = connection.prepareStatement(
                 "INSERT OR REPLACE INTO extra_world_credits (player_uuid, extra_worlds) VALUES (?, ?)")) {
@@ -700,4 +752,6 @@ public class DatabaseManager {
             e.printStackTrace();
         }
     }
+
+
 }

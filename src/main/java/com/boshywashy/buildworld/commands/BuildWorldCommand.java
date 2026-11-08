@@ -28,7 +28,6 @@ public class BuildWorldCommand implements CommandExecutor {
 
         Player player = (Player) sender;
 
-        // Check maintenance mode for ALL commands except if player has admin permission
         if (plugin.getConfig().getBoolean("Maintenance.Enabled", false) && !player.hasPermission("buildworld.admin")) {
             player.sendMessage(MessageUtils.colorize(plugin.getConfig().getString("Maintenance.KickMessage",
                     "&cThe BuildWorld system is currently under maintenance. Please try again later.")));
@@ -36,7 +35,7 @@ public class BuildWorldCommand implements CommandExecutor {
         }
 
         if (args.length == 0) {
-            sendHelp(player, 1);
+            handleMenu(player);
             return true;
         }
 
@@ -126,18 +125,26 @@ public class BuildWorldCommand implements CommandExecutor {
         return true;
     }
 
-    // ── Spawn commands ──────────────────────────────────────────────────────
-
     private void handleSpawn(Player player) {
-        Location spawnLoc = plugin.getDatabaseManager().getSpawnLocation();
-        if (spawnLoc == null) {
-            player.sendMessage(MessageUtils.colorize("&cSpawn world not set!"));
+        String spawnWorldName = plugin.getDatabaseManager().getSpawnWorld();
+        if (spawnWorldName == null) {
+            player.sendMessage(MessageUtils.colorize("&cSpawn world not set! Use /bw setspawn to set one."));
             return;
         }
 
-        World world = spawnLoc.getWorld();
+        World world = Bukkit.getWorld(spawnWorldName);
         if (world == null) {
-            player.sendMessage(MessageUtils.colorize("&cSpawn world not found!"));
+            WorldCreator wc = new WorldCreator(spawnWorldName);
+            world = Bukkit.createWorld(wc);
+            if (world == null) {
+                player.sendMessage(MessageUtils.colorize("&cFailed to load spawn world!"));
+                return;
+            }
+        }
+
+        Location spawnLoc = plugin.getDatabaseManager().getSpawnLocation();
+        if (spawnLoc == null) {
+            player.sendMessage(MessageUtils.colorize("&cSpawn location not set! Use /bw setspawn to set one."));
             return;
         }
 
@@ -172,8 +179,6 @@ public class BuildWorldCommand implements CommandExecutor {
         plugin.getDatabaseManager().removeSpawnWorld();
         player.sendMessage(MessageUtils.colorize("%primary%Spawn location has been removed!"));
     }
-
-    // ── World creation ──────────────────────────────────────────────────────
 
     private void handleCreateWorld(Player player) {
         if (!player.hasPermission("buildworld.create")) {
@@ -223,8 +228,6 @@ public class BuildWorldCommand implements CommandExecutor {
         return sb.toString();
     }
 
-    // ── Nickname ────────────────────────────────────────────────────────────
-
     private void handleNickname(Player player, String[] args) {
         if (args.length < 3) {
             player.sendMessage(MessageUtils.colorize("&cUsage: /bw nickname <world> <nickname>"));
@@ -254,8 +257,6 @@ public class BuildWorldCommand implements CommandExecutor {
         plugin.getDatabaseManager().setNickname(worldName, nickname);
         player.sendMessage(MessageUtils.colorize("%primary%Nickname set to: %secondary%" + nickname));
     }
-
-    // ── Members ─────────────────────────────────────────────────────────────
 
     private void handleMembers(Player player, String[] args) {
         if (args.length < 2) {
@@ -296,20 +297,18 @@ public class BuildWorldCommand implements CommandExecutor {
 
         StringBuilder ownerStr = new StringBuilder("%primary%Owner(s): %secondary%");
         for (UUID owner : owners) ownerStr.append(Bukkit.getOfflinePlayer(owner).getName()).append(", ");
-        player.sendMessage(MessageUtils.colorize(ownerStr.toString().replaceAll(", $", "")));
+        player.sendMessage(MessageUtils.colorize(ownerStr.toString().replaceAll(", \\$", "")));
 
         if (!members.isEmpty()) {
             StringBuilder memberStr = new StringBuilder("%primary%Member(s): %secondary%");
             for (UUID member : members) memberStr.append(Bukkit.getOfflinePlayer(member).getName()).append(", ");
-            player.sendMessage(MessageUtils.colorize(memberStr.toString().replaceAll(", $", "")));
+            player.sendMessage(MessageUtils.colorize(memberStr.toString().replaceAll(", \\$", "")));
         } else {
             player.sendMessage(MessageUtils.colorize("%primary%Member(s): %secondary%None"));
         }
 
         player.sendMessage(MessageUtils.colorize("&l&m%primary%= = = = = = = = = = ="));
     }
-
-    // ── Open / Close ────────────────────────────────────────────────────────
 
     private void handleOpen(Player player, String[] args) {
         if (args.length < 2) {
@@ -367,8 +366,6 @@ public class BuildWorldCommand implements CommandExecutor {
         }
     }
 
-    // ── Item ────────────────────────────────────────────────────────────────
-
     private void handleItem(Player player, String[] args) {
         String worldInput;
         Material mat = null;
@@ -410,8 +407,6 @@ public class BuildWorldCommand implements CommandExecutor {
         plugin.getDatabaseManager().setItem(worldName, mat.name());
         player.sendMessage(MessageUtils.colorize("%primary%Item set to: %secondary%" + mat.name()));
     }
-
-    // ── Invite / Join / RetractInvite ────────────────────────────────────────
 
     private void handleInvite(Player player, String[] args) {
         if (args.length < 4) {
@@ -517,10 +512,13 @@ public class BuildWorldCommand implements CommandExecutor {
 
         plugin.getDatabaseManager().addMember(worldName, player.getUniqueId(), role);
         plugin.getDatabaseManager().removeInvite(worldName, player.getUniqueId());
+
+        if (player.getWorld().getName().equals(worldName)) {
+            plugin.getPermissionManager().applyWorldPermissions(player, worldName);
+        }
+
         player.sendMessage(MessageUtils.colorize("%primary%You joined as: %secondary%" + role));
     }
-
-    // ── Delete / Kick / Leave ────────────────────────────────────────────────
 
     private void handleDelete(Player player, String[] args) {
         if (args.length < 2) {
@@ -550,12 +548,12 @@ public class BuildWorldCommand implements CommandExecutor {
 
     private void handleKick(Player player, String[] args) {
         if (args.length < 3) {
-            player.sendMessage(MessageUtils.colorize("&cUsage: /bw kick <player> <world>"));
+            player.sendMessage(MessageUtils.colorize("&cUsage: /bw kick <world> <player>"));
             return;
         }
 
-        String targetName = args[1];
-        String worldName = resolveWorldName(args[2]);
+        String worldName = resolveWorldName(args[1]);
+        String targetName = args[2];
 
         if (worldName == null) {
             player.sendMessage(MessageUtils.colorize("&cWorld not found!"));
@@ -563,19 +561,32 @@ public class BuildWorldCommand implements CommandExecutor {
         }
 
         if (!plugin.getDatabaseManager().isOwner(worldName, player.getUniqueId())) {
-            player.sendMessage(MessageUtils.colorize("&cOnly owners can kick!"));
+            player.sendMessage(MessageUtils.colorize("&cOnly owners can kick from this world!"));
             return;
         }
 
         @SuppressWarnings("deprecation")
         OfflinePlayer target = Bukkit.getOfflinePlayer(targetName);
-        if (plugin.getDatabaseManager().isOwner(worldName, target.getUniqueId())) {
+        UUID targetUUID = target.getUniqueId();
+
+        if (plugin.getDatabaseManager().isOwner(worldName, targetUUID)) {
             player.sendMessage(MessageUtils.colorize("&cCannot kick owners!"));
             return;
         }
 
-        plugin.getDatabaseManager().removeMember(worldName, target.getUniqueId());
-        player.sendMessage(MessageUtils.colorize("%primary%Kicked %secondary%" + targetName));
+        if (!plugin.getDatabaseManager().isMember(worldName, targetUUID)) {
+            player.sendMessage(MessageUtils.colorize("&cThat player is not a member of this world!"));
+            return;
+        }
+
+        plugin.getDatabaseManager().removeMember(worldName, targetUUID);
+
+        Player targetPlayer = Bukkit.getPlayer(targetUUID);
+        if (targetPlayer != null && targetPlayer.isOnline() && targetPlayer.getWorld().getName().equals(worldName)) {
+            plugin.getPermissionManager().removePermissions(targetPlayer);
+        }
+
+        player.sendMessage(MessageUtils.colorize("%primary%Kicked %secondary%" + targetName + " %primary%from %secondary%" + plugin.getDatabaseManager().getNickname(worldName)));
     }
 
     private void handleLeave(Player player, String[] args) {
@@ -601,13 +612,16 @@ public class BuildWorldCommand implements CommandExecutor {
         }
 
         plugin.getDatabaseManager().removeMember(worldName, playerUUID);
+
+        if (player.getWorld().getName().equals(worldName)) {
+            plugin.getPermissionManager().removePermissions(player);
+        }
+
         player.sendMessage(MessageUtils.colorize("%primary%You left the world!"));
     }
 
-    // ── Menu / Visit / Home ──────────────────────────────────────────────────
-
     private void handleMenu(Player player) {
-        plugin.getWorldMenuGUI().openMenu(player, 1);
+        plugin.getMainMenuGUI().openMenu(player);
     }
 
     private void handleVisit(Player player, String[] args) {
@@ -636,6 +650,24 @@ public class BuildWorldCommand implements CommandExecutor {
                 player.sendMessage(MessageUtils.colorize("&cThis world is closed!"));
                 return;
             }
+        }
+
+        if (plugin.getDatabaseManager().isInactive(worldName)) {
+            player.sendMessage(MessageUtils.colorize("&eWorld is inactive and loading up... Please wait."));
+            String finalWorldName = worldName;
+            plugin.getWorldManager().activateWorld(worldName, () -> {
+                if (!player.isOnline()) return;
+                World world = plugin.getWorldManager().ensureWorldLoaded(finalWorldName);
+                if (world != null) {
+                    Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(finalWorldName);
+                    player.teleport(spawnLoc);
+                    player.sendMessage(MessageUtils.colorize("%primary%Visiting %secondary%" +
+                            plugin.getDatabaseManager().getNickname(finalWorldName)));
+                } else {
+                    player.sendMessage(MessageUtils.colorize("&cWorld could not be loaded!"));
+                }
+            });
+            return;
         }
 
         World world = plugin.getWorldManager().ensureWorldLoaded(worldName);
@@ -668,6 +700,23 @@ public class BuildWorldCommand implements CommandExecutor {
             return;
         }
 
+        if (plugin.getDatabaseManager().isInactive(worldName)) {
+            player.sendMessage(MessageUtils.colorize("&eWorld is inactive and loading up... Please wait."));
+            plugin.getWorldManager().activateWorld(worldName, () -> {
+                if (!player.isOnline()) return;
+                World world = plugin.getWorldManager().ensureWorldLoaded(worldName);
+                if (world != null) {
+                    Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(worldName);
+                    player.teleport(spawnLoc);
+                    player.sendMessage(MessageUtils.colorize("%primary%Teleported to %secondary%" +
+                            plugin.getDatabaseManager().getNickname(worldName)));
+                } else {
+                    player.sendMessage(MessageUtils.colorize("&cWorld could not be loaded!"));
+                }
+            });
+            return;
+        }
+
         World world = plugin.getWorldManager().ensureWorldLoaded(worldName);
         if (world != null) {
             Location spawnLoc = plugin.getDatabaseManager().getWorldSpawn(worldName);
@@ -678,8 +727,6 @@ public class BuildWorldCommand implements CommandExecutor {
             player.sendMessage(MessageUtils.colorize("&cWorld could not be loaded!"));
         }
     }
-
-    // ── Info ─────────────────────────────────────────────────────────────────
 
     private void handleInfo(Player player, String[] args) {
         String worldName;
@@ -711,6 +758,7 @@ public class BuildWorldCommand implements CommandExecutor {
         int diameter = plugin.getDatabaseManager().getDiameter(worldName);
         boolean isOpen = plugin.getDatabaseManager().isOpen(worldName);
         boolean isHidden = plugin.getDatabaseManager().isHidden(worldName);
+        boolean isInactive = plugin.getDatabaseManager().isInactive(worldName);
 
         player.sendMessage(MessageUtils.colorize("&l&m%primary%= = = = = = = = = = ="));
         player.sendMessage(MessageUtils.colorize(nickname));
@@ -719,25 +767,23 @@ public class BuildWorldCommand implements CommandExecutor {
 
         StringBuilder ownerStr = new StringBuilder("%primary%Owner(s): %secondary%");
         for (UUID owner : owners) ownerStr.append(Bukkit.getOfflinePlayer(owner).getName()).append(", ");
-        player.sendMessage(MessageUtils.colorize(ownerStr.toString().replaceAll(", $", "")));
+        player.sendMessage(MessageUtils.colorize(ownerStr.toString().replaceAll(", \\$", "")));
 
         StringBuilder memberStr = new StringBuilder("%primary%Member(s): %secondary%");
         if (members.isEmpty()) memberStr.append("None");
         else for (UUID member : members) memberStr.append(Bukkit.getOfflinePlayer(member).getName()).append(", ");
-        player.sendMessage(MessageUtils.colorize(memberStr.toString().replaceAll(", $", "")));
+        player.sendMessage(MessageUtils.colorize(memberStr.toString().replaceAll(", \\$", "")));
 
         player.sendMessage(MessageUtils.colorize("&l&m%primary%= = = = = = = = = = ="));
         player.sendMessage(MessageUtils.colorize("%primary%Item: %secondary%" + item));
         player.sendMessage(MessageUtils.colorize("%primary%World Size: %secondary%" + diameter));
         player.sendMessage(MessageUtils.colorize("%primary%World: " + (isOpen ? "&aOpened" : "&cClosed")));
-        // Show hidden status to owners and admins only
+        // Whether it says if a world status is active or inactive. Shouldn't be sent so is commented out: player.sendMessage(MessageUtils.colorize("%primary%Status: " + (isInactive ? "&cInactive" : "&aActive")));
         if (plugin.getDatabaseManager().isOwner(worldName, player.getUniqueId()) || player.hasPermission("buildworld.admin")) {
             player.sendMessage(MessageUtils.colorize("%primary%Hidden: " + (isHidden ? "&cYes" : "&aNo")));
         }
         player.sendMessage(MessageUtils.colorize("&l&m%primary%= = = = = = = = = = ="));
     }
-
-    // ── Help ─────────────────────────────────────────────────────────────────
 
     private void handleHelp(Player player, String[] args) {
         if (args.length < 2) {
@@ -781,7 +827,7 @@ public class BuildWorldCommand implements CommandExecutor {
         player.sendMessage(MessageUtils.colorize("%secondary%/bw open/close <world> %primary%- Open/close world"));
         player.sendMessage(MessageUtils.colorize("%secondary%/bw nickname <world> <n> %primary%- Set nickname"));
         player.sendMessage(MessageUtils.colorize("%secondary%/bw item <world> [item] %primary%- Set display item"));
-        player.sendMessage(MessageUtils.colorize("%secondary%/bw kick <player> <world> %primary%- Kick member"));
+        player.sendMessage(MessageUtils.colorize("%secondary%/bw kick <world> <player> %primary%- Kick member"));
         player.sendMessage(MessageUtils.colorize("%secondary%/bw leave <world> %primary%- Leave world"));
         player.sendMessage(MessageUtils.colorize("%secondary%/bw delete <world> confirm confirm %primary%- Delete"));
         player.sendMessage(MessageUtils.colorize("%secondary%/bw help commands <page> %primary%- Command help"));
@@ -789,14 +835,11 @@ public class BuildWorldCommand implements CommandExecutor {
         player.sendMessage(MessageUtils.colorize("%secondary%/bw ExpandWorld <world> <blocks> %primary%- Expand border"));
         player.sendMessage(MessageUtils.colorize("%secondary%/bw ExpansionBlockAmount %primary%- Check blocks"));
         player.sendMessage(MessageUtils.colorize("%secondary%/bw MoveWorldSpawn <world> %primary%- Set world spawn"));
-        // Only show hide/show to owners or admins
         if (!plugin.getDatabaseManager().getOwnedWorlds(player.getUniqueId()).isEmpty() || player.hasPermission("buildworld.admin")) {
             player.sendMessage(MessageUtils.colorize("%secondary%/bw HideWorld <world> %primary%- Hide your world from the menu"));
             player.sendMessage(MessageUtils.colorize("%secondary%/bw ShowWorld <world> %primary%- Make your world visible again"));
         }
     }
-
-    // ── Expand World ─────────────────────────────────────────────────────────
 
     private void handleExpandWorld(Player player, String[] args) {
         if (args.length < 3) {
@@ -846,9 +889,6 @@ public class BuildWorldCommand implements CommandExecutor {
                 " %primary%blocks to expand with!"));
     }
 
-    // ── Move World Spawn ──────────────────────────────────────────────────────
-    // Player MUST be physically inside the target world, no exceptions.
-
     private void handleMoveWorldSpawn(Player player, String[] args) {
         if (args.length < 2) {
             player.sendMessage(MessageUtils.colorize("&cUsage: /bw MoveWorldSpawn <world>"));
@@ -883,11 +923,6 @@ public class BuildWorldCommand implements CommandExecutor {
                 " facing " + String.format("%.0f, %.0f", centeredLoc.getYaw(), centeredLoc.getPitch())));
     }
 
-    // ── Hide World ────────────────────────────────────────────────────────────
-    // Available to the world's owner and admins.
-    // Hides the world from the public section of the menu.
-    // Owners, members, and operators can still see it in their personal section or via ops view.
-
     private void handleHideWorld(Player player, String[] args) {
         if (args.length < 2) {
             player.sendMessage(MessageUtils.colorize("&cUsage: /bw HideWorld <world>"));
@@ -900,7 +935,6 @@ public class BuildWorldCommand implements CommandExecutor {
             return;
         }
 
-        // Only the world's owner or an admin can hide it
         if (!plugin.getDatabaseManager().isOwner(worldName, player.getUniqueId()) &&
                 !player.hasPermission("buildworld.admin")) {
             player.sendMessage(MessageUtils.colorize("&cOnly the world owner can hide their world!"));
@@ -919,9 +953,6 @@ public class BuildWorldCommand implements CommandExecutor {
                 " It won't appear in the public menu. Your members can still see it in their personal section."));
     }
 
-    // ── Show World ────────────────────────────────────────────────────────────
-    // Makes a previously hidden world visible again in the public menu.
-
     private void handleShowWorld(Player player, String[] args) {
         if (args.length < 2) {
             player.sendMessage(MessageUtils.colorize("&cUsage: /bw ShowWorld <world>"));
@@ -934,7 +965,6 @@ public class BuildWorldCommand implements CommandExecutor {
             return;
         }
 
-        // Only the world's owner or an admin can show it
         if (!plugin.getDatabaseManager().isOwner(worldName, player.getUniqueId()) &&
                 !player.hasPermission("buildworld.admin")) {
             player.sendMessage(MessageUtils.colorize("&cOnly the world owner can change world visibility!"));
@@ -951,8 +981,6 @@ public class BuildWorldCommand implements CommandExecutor {
         player.sendMessage(MessageUtils.colorize("%primary%World %secondary%" + nickname +
                 " %primary%is now %secondary%VISIBLE%primary% again in the public menu."));
     }
-
-    // ── Utility ───────────────────────────────────────────────────────────────
 
     private String resolveWorldName(String input) {
         String byNickname = plugin.getDatabaseManager().getWorldByNickname(input);
