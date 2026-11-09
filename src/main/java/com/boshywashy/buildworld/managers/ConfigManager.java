@@ -19,6 +19,12 @@ public class ConfigManager {
     public void reload() {
         plugin.reloadConfig();
         loadColors();
+        if (plugin.getDiscordManager() != null) {
+            plugin.getDiscordManager().start(); // pick up a changed bot token / channel
+        }
+        if (plugin.getBorderParticleManager() != null) {
+            plugin.getBorderParticleManager().start(); // pick up changed particle settings
+        }
     }
 
     private void loadColors() {

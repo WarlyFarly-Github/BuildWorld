@@ -866,9 +866,20 @@ public class BuildWorldCommand implements CommandExecutor {
             return;
         }
 
+        if (blocks <= 0) {
+            player.sendMessage(MessageUtils.colorize("&cYou must expand by at least 1 block!"));
+            return;
+        }
+
         int available = plugin.getDatabaseManager().getExpansionBlocks(player.getUniqueId());
         if (available < blocks) {
             player.sendMessage(MessageUtils.colorize("&cNot enough blocks! You have: " + available));
+            return;
+        }
+
+        // With a Discord bot configured, staff approve expansions instead of them being instant
+        if (plugin.getDiscordManager().isConfigured()) {
+            plugin.getDiscordManager().submitExpansionRequest(player, worldName, blocks);
             return;
         }
 

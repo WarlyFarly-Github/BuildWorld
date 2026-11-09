@@ -92,6 +92,18 @@ public class DatabaseManager {
                     "player_uuid VARCHAR(36) PRIMARY KEY," +
                     "extra_worlds INT DEFAULT 0)");
 
+            stmt.execute("CREATE TABLE IF NOT EXISTS expansion_requests (" +
+                    "request_id VARCHAR(36) PRIMARY KEY," +
+                    "player_uuid VARCHAR(36) NOT NULL," +
+                    "player_name VARCHAR(32)," +
+                    "world_name VARCHAR(64) NOT NULL," +
+                    "blocks INT NOT NULL," +
+                    "status VARCHAR(12) DEFAULT 'PENDING'," +
+                    "decided_by VARCHAR(64)," +
+                    "new_diameter INT DEFAULT 0," +
+                    "notified BOOLEAN DEFAULT FALSE," +
+                    "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -129,6 +141,7 @@ public class DatabaseManager {
             connection.prepareStatement("DELETE FROM members WHERE world_name = '" + worldName + "'").executeUpdate();
             connection.prepareStatement("DELETE FROM invites WHERE world_name = '" + worldName + "'").executeUpdate();
             connection.prepareStatement("DELETE FROM world_spawns WHERE world_name = '" + worldName + "'").executeUpdate();
+            connection.prepareStatement("DELETE FROM expansion_requests WHERE status = 'PENDING' AND world_name = '" + worldName + "'").executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -520,6 +533,118 @@ public class DatabaseManager {
     public void addExpansionBlocks(UUID playerUUID, int blocks) {
         int current = getExpansionBlocks(playerUUID);
         setExpansionBlocks(playerUUID, current + blocks);
+    }
+
+    // ---- Discord expansion requests ----
+
+    public void createExpansionRequest(ExpansionRequest request) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "INSERT INTO expansion_requests (request_id, player_uuid, player_name, world_name, blocks, status) " +
+                        "VALUES (?, ?, ?, ?, ?, 'PENDING')")) {
+            ps.setString(1, request.id());
+            ps.setString(2, request.playerUuid().toString());
+            ps.setString(3, request.playerName());
+            ps.setString(4, request.worldName());
+            ps.setInt(5, request.blocks());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private ExpansionRequest readExpansionRequest(ResultSet rs) throws SQLException {
+        return new ExpansionRequest(
+                rs.getString("request_id"),
+                UUID.fromString(rs.getString("player_uuid")),
+                rs.getString("player_name"),
+                rs.getString("world_name"),
+                rs.getInt("blocks"),
+                rs.getString("status"),
+                rs.getString("decided_by"),
+                rs.getInt("new_diameter"));
+    }
+
+    public ExpansionRequest getExpansionRequest(String requestId) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT * FROM expansion_requests WHERE request_id = ?")) {
+            ps.setString(1, requestId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return readExpansionRequest(rs);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public boolean hasPendingExpansionRequest(String worldName) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT 1 FROM expansion_requests WHERE world_name = ? AND status = 'PENDING'")) {
+            ps.setString(1, worldName);
+            ResultSet rs = ps.executeQuery();
+            return rs.next();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    /**
+     * Records the outcome of a request, but only if it is still PENDING.
+     *
+     * @return true if this call decided it, false if it was already decided (or doesn't exist)
+     */
+    public boolean decideExpansionRequest(String requestId, String status, String decidedBy, int newDiameter) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE expansion_requests SET status = ?, decided_by = ?, new_diameter = ?, notified = 0 " +
+                        "WHERE request_id = ? AND status = 'PENDING'")) {
+            ps.setString(1, status);
+            ps.setString(2, decidedBy);
+            ps.setInt(3, newDiameter);
+            ps.setString(4, requestId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
+    /** Decided requests whose result the player hasn't been told about yet. */
+    public List<ExpansionRequest> getUnnotifiedExpansionResults(UUID playerUUID) {
+        List<ExpansionRequest> results = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT * FROM expansion_requests WHERE player_uuid = ? AND status <> 'PENDING' AND notified = 0 " +
+                        "ORDER BY created_at")) {
+            ps.setString(1, playerUUID.toString());
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                results.add(readExpansionRequest(rs));
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return results;
+    }
+
+    public void markExpansionNotified(String requestId) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "UPDATE expansion_requests SET notified = 1 WHERE request_id = ?")) {
+            ps.setString(1, requestId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void deleteExpansionRequest(String requestId) {
+        try (PreparedStatement ps = connection.prepareStatement(
+                "DELETE FROM expansion_requests WHERE request_id = ?")) {
+            ps.setString(1, requestId);
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public void addInvite(String worldName, UUID playerUUID, String role) {

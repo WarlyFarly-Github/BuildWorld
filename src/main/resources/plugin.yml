@@ -4,7 +4,10 @@ main: com.boshywashy.buildworld.BuildWorld
 api-version: '1.21'
 description: A comprehensive build world management plugin
 author: BoshyWashy
-softdepend: [WorldGuard, Vault, PlaceholderAPI]
+softdepend: [WorldGuard, Vault, PlaceholderAPI, floodgate, Geyser-Spigot]
+# Downloaded from Maven Central by the server on startup (keep the version in step with build.gradle.kts)
+libraries:
+  - net.dv8tion:JDA:6.7.0
 commands:
   buildworld:
     description: Main BuildWorld command

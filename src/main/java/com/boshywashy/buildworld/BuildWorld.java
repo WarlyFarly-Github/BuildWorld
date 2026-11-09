@@ -28,6 +28,8 @@ public class BuildWorld extends JavaPlugin {
     private WorldManager worldManager;
     private PermissionManager permissionManager;
     private ExpansionManager expansionManager;
+    private DiscordManager discordManager;
+    private BorderParticleManager borderParticleManager;
     private WorldMenuGUI worldMenuGUI;
     private MainMenuGUI mainMenuGUI;
     private WorldControlGUI worldControlGUI;
@@ -45,6 +47,8 @@ public class BuildWorld extends JavaPlugin {
         this.worldManager = new WorldManager(this);
         this.permissionManager = new PermissionManager(this);
         this.expansionManager = new ExpansionManager(this);
+        this.discordManager = new DiscordManager(this);
+        this.borderParticleManager = new BorderParticleManager(this);
         this.worldMenuGUI = new WorldMenuGUI(this);
         this.mainMenuGUI = new MainMenuGUI(this);
         this.worldControlGUI = new WorldControlGUI(this);
@@ -61,6 +65,7 @@ public class BuildWorld extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new PlayerListener(this), this);
         getServer().getPluginManager().registerEvents(new WorldListener(this), this);
+        getServer().getPluginManager().registerEvents(discordManager, this);
         getServer().getPluginManager().registerEvents(worldMenuGUI, this);
         getServer().getPluginManager().registerEvents(mainMenuGUI, this);
         getServer().getPluginManager().registerEvents(worldControlGUI, this);
@@ -71,6 +76,9 @@ public class BuildWorld extends JavaPlugin {
         if (configManager.isOnlineExpansionEnabled()) {
             expansionManager.startExpansionTask();
         }
+
+        discordManager.start();
+        borderParticleManager.start();
 
         getLogger().info("BuildWorld has been enabled!");
     }
@@ -108,6 +116,12 @@ public class BuildWorld extends JavaPlugin {
         if (expansionManager != null) {
             expansionManager.stopExpansionTask();
         }
+        if (discordManager != null) {
+            discordManager.shutdown();
+        }
+        if (borderParticleManager != null) {
+            borderParticleManager.stop();
+        }
         if (databaseManager != null) {
             databaseManager.close();
         }
@@ -123,6 +137,8 @@ public class BuildWorld extends JavaPlugin {
     public WorldManager getWorldManager() { return worldManager; }
     public PermissionManager getPermissionManager() { return permissionManager; }
     public ExpansionManager getExpansionManager() { return expansionManager; }
+    public DiscordManager getDiscordManager() { return discordManager; }
+    public BorderParticleManager getBorderParticleManager() { return borderParticleManager; }
     public WorldMenuGUI getWorldMenuGUI() { return worldMenuGUI; }
     public MainMenuGUI getMainMenuGUI() { return mainMenuGUI; }
     public WorldControlGUI getWorldControlGUI() { return worldControlGUI; }

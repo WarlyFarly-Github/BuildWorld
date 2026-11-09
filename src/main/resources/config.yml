@@ -51,6 +51,37 @@ OnlineWorldExpansion:
   BlockGainPerMin: 20
   CheckInterval: 60 # seconds
 
+# Discord Expansion Approval
+# When BotToken and ChannelId are BOTH set, /bw ExpandWorld no longer expands the border instantly.
+# Instead a request with Accept / Decline buttons is posted to the Discord channel, and the border
+# only grows once someone presses Accept. Leave either one blank to keep instant expansion.
+# After changing these, run /bwa reload (or restart) to reconnect the bot.
+#
+# Setup: create a bot at https://discord.com/developers/applications, copy its token below,
+# invite it to your server, and give it View Channel, Send Messages and Embed Links in the channel.
+# KEEP THE TOKEN SECRET - anyone with it controls your bot. If it leaks, reset it in the portal.
+Discord:
+  BotToken: ""
+  ChannelId: ""        # Right-click the channel in Discord (Developer Mode on) > Copy Channel ID
+  ReviewerRoleId: ""   # Optional: only members with this role can press the buttons. Blank = anyone who can see the channel.
+  # Messages sent to the player. Placeholders:
+  #   {discuser} the Discord user who reviewed it   {world} the world's name
+  #   {distance} the world's new border size        {blocks} how many blocks were requested
+  Messages:
+    Accepted: "%primary%{discuser} accepted your expansion request for %secondary%{world}%primary%! You now have %secondary%{distance}%primary%."
+    Declined: "&c{discuser} declined your expansion request for {world}."
+    Failed: "&cYour expansion request for {world} could not be applied. The world may no longer exist, or you no longer have enough expansion blocks."
+
+# Bedrock Border Particles (GeyserMC)
+# Bedrock players can't see the vanilla world border, so they get red particles where it is instead.
+# Only Bedrock players see them, and only the part of the border within ViewDistance blocks of them.
+# Bedrock players are detected through Floodgate or Geyser if installed.
+BedrockBorderParticles:
+  Enabled: true
+  ViewDistance: 40   # Blocks. How far from the player the border is drawn.
+  Spacing: 3         # Blocks between particles. Lower = denser wall, but more load on the server and Geyser.
+  UpdateTicks: 10    # How often the particles are redrawn (20 ticks = 1 second).
+
 # Member/Owner Permissions (Nested under buildworld.member and buildworld.owner)
 Permissions:
   Member:

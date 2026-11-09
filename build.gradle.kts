@@ -3,11 +3,13 @@ plugins {
 }
 
 group = "org.example"
-version = "1.0.15-Beta_Release"
+version = "1.0.17-Beta_Release-BBFL"
 
 val paperApiVersion = "1.20.4-R0.1-SNAPSHOT"
 val worldEditVersion = "7.2.13"
 val worldGuardVersion = "7.0.10"
+// Keep in step with the `libraries:` entry in plugin.yml
+val jdaVersion = "6.7.0"
 
 repositories {
     // Maven resolves Central implicitly; Gradle needs it declared
@@ -36,6 +38,12 @@ dependencies {
 
     // LuckPerms API
     compileOnly("net.luckperms:api:5.5")
+
+    // Discord bot library. Not bundled in the jar: the server downloads it at startup
+    // because it's listed under `libraries:` in plugin.yml. opus-java is only for voice.
+    compileOnly("net.dv8tion:JDA:$jdaVersion") {
+        exclude(module = "opus-java")
+    }
 }
 
 tasks.withType<JavaCompile>().configureEach {
